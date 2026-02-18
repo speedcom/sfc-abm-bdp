@@ -10,7 +10,7 @@ A Stock-Flow Consistent Agent-Based Model (SFC-ABM) investigating how Universal 
 | **UBI = 2,000** | **61.9% ± 16.4%** | -13.4% | 39.6% | **0.20** | **5,950 PLN** |
 | UBI = 3,000 | 32.8% ± 2.1% | +19.4% | 19.4% | 0.10 | 1,570 PLN |
 
-**Bimodality at UBI = 2,000 PLN**: Hartigan's dip test rejects unimodality with p = 1.7 × 10⁻⁵. 70% of Monte Carlo realizations converge to high adoption (μ = 73.2%), while 30% settle at moderate adoption (μ = 34.2%). This is a signature of a **critical point** (phase transition) — the mean outcome (62%) does not correspond to any typical realization.
+**Bimodality at UBI = 2,000 PLN**: Hartigan's dip test rejects unimodality with p = 1.7 × 10⁻⁵. GMM decomposition (K=3, selected by BIC) reveals three attractor states: ~59% of realizations converge to high adoption (μ = 73.2%), ~21% settle at low adoption (μ = 34.2%), and ~19% remain in an intermediate regime (μ = 57.6%). This is a signature of a **critical point** (phase transition) — the mean outcome (62%) does not correspond to any typical realization.
 
 ![Bifurcation Diagram](figures/v5_mc_bifurcation.png)
 
