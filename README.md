@@ -4,6 +4,8 @@ A Stock-Flow Consistent Agent-Based Model (SFC-ABM) investigating how Universal 
 
 ## Key Findings
 
+### Stylized model (4 sectors, equal shares)
+
 | Scenario | Adoption | Inflation | Unemployment | Gini | Real Consumption |
 |---|---|---|---|---|---|
 | UBI = 0 | 12.9% ± 4.3% | -22.6% | 78.7% | 0.80 | 2,311 PLN |
@@ -14,10 +16,24 @@ A Stock-Flow Consistent Agent-Based Model (SFC-ABM) investigating how Universal 
 
 ![Bifurcation Diagram](figures/v5_mc_bifurcation.png)
 
+### GUS-calibrated model (6 sectors, Polish economy 2024)
+
+| Scenario | Adoption | Inflation | Unemployment | BPO/SSC | Manufacturing |
+|---|---|---|---|---|---|
+| UBI = 0 | 13.9% ± 2.9% | −9.0% | 8.6% | 63.5% | 45.0% |
+| **UBI = 2,000** | 13.1% ± 1.7% | **+17.9%** | 8.5% | **84.5%** | **31.6%** |
+| UBI = 3,000 | 12.1% ± 1.2% | +33.8% | 8.1% | 82.1% | 27.0% |
+
+**Dual Acceleration Paradox**: When calibrated to GUS/NBP 2024 data (6 sectors, sector-specific wage multipliers), UBI simultaneously *accelerates* automation in BPO/SSC (+21pp, σ=50) and *decelerates* it in Manufacturing (−13pp, σ=10) through the credit channel (Taylor rule → higher rates → capital-intensive sectors blocked). The 75% of the economy in low-σ sectors (retail, public, agriculture) is largely automation-resistant regardless of UBI level.
+
+![Dual Paradox](figures/v6_gus_dual_paradox.png)
+![GUS Sector Comparison](figures/v6_gus_sector_comparison.png)
+
 ## Model Architecture
 
-- **10,000 heterogeneous firm-agents** across 4 sectors with different CES elasticities of substitution (σ):
-  - BPO/SSC (σ=50), Manufacturing (σ=10), Retail/Services (σ=5), Healthcare (σ=2)
+- **10,000 heterogeneous firm-agents** across 6 sectors (GUS 2024 calibration) with different CES elasticities of substitution (σ):
+  - BPO/SSC (σ=50, 3%), Manufacturing (σ=10, 16%), Retail/Services (σ=5, 45%), Healthcare (σ=2, 6%), Public (σ=1, 22%), Agriculture (σ=3, 8%)
+- **Sector-specific wage multipliers** reflecting GUS earnings data (BPO ×1.35, Agriculture ×0.67)
 - **Watts-Strogatz small-world network** (k=6, rewiring p=0.10) with demonstration effects
 - **6 macro sectors**: firms, households, government (MMT fiscal), banking (Basel III), central bank (Taylor rule), foreign sector (IRP exchange rate)
 - **Stock-flow consistency**: all flows have counterpart stocks, government spending creates private assets
@@ -30,12 +46,20 @@ A Stock-Flow Consistent Agent-Based Model (SFC-ABM) investigating how Universal 
 - [Ammonite](https://ammonite.io/) 3.0.2+ (Scala 3)
 - Python 3.10+ with: `numpy`, `pandas`, `matplotlib`, `scikit-learn`, `diptest`, `scipy`
 
-### Run Monte Carlo (3 scenarios × 100 seeds)
+### Run Monte Carlo — stylized model (3 scenarios × 100 seeds)
 
 ```bash
 BDP=0    SEEDS=100 PREFIX=nobdp    amm simulation_mc.sc
 BDP=2000 SEEDS=100 PREFIX=baseline amm simulation_mc.sc
 BDP=3000 SEEDS=100 PREFIX=bdp3000  amm simulation_mc.sc
+```
+
+### Run Monte Carlo — GUS-calibrated model (3 scenarios × 100 seeds)
+
+```bash
+BDP=0    SEEDS=100 PREFIX=gus_nobdp    amm simulation_mc.sc
+BDP=2000 SEEDS=100 PREFIX=gus_baseline amm simulation_mc.sc
+BDP=3000 SEEDS=100 PREFIX=gus_bdp3k    amm simulation_mc.sc
 ```
 
 Output: `mc/{prefix}_terminal.csv` (per-seed terminal values) and `mc/{prefix}_timeseries.csv` (monthly aggregates with mean/p05/p95).
@@ -53,6 +77,7 @@ python analysis/mc_charts.py          # 6-panel time series, bimodal histogram, 
 python analysis/mc_welfare.py         # Welfare analysis (Gini, real consumption)
 python analysis/diptest_analysis.py   # Hartigan's dip test + GMM BIC
 python analysis/sweep_analysis.py     # Bifurcation diagram
+python analysis/gus_charts.py        # GUS-calibrated 6-sector comparison + dual paradox
 ```
 
 ## Figures
@@ -66,6 +91,8 @@ python analysis/sweep_analysis.py     # Bifurcation diagram
 | `v5_mc_welfare.png` | Welfare analysis: real consumption, Gini, equality-consumption tradeoff |
 | `v5_mc_nonlinear.png` | Non-monotonic (inverted-U) response of adoption and inflation to UBI level |
 | `v5_mc_sectors.png` | Per-sector adoption time series (BPO fastest, Healthcare slowest) |
+| `v6_gus_sector_comparison.png` | GUS-calibrated: 6-sector adoption bars + macro aggregates (3 UBI scenarios) |
+| `v6_gus_dual_paradox.png` | Dual Paradox: BPO acceleration (+21pp) vs Manufacturing deceleration (−13pp) |
 
 ## Theoretical Framework
 

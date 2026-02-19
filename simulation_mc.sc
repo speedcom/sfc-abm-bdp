@@ -45,7 +45,7 @@ object Config {
   val ShockMonth       = 30
 
   // Firma (base — sektory modyfikują te wartości)
-  val BaseRevenue      = 83333.0
+  val BaseRevenue      = 100000.0   // Skalowane do GUS 2024 wage level
   val OtherCosts       = 16667.0
   val AiCapex          = 1200000.0
   val HybridCapex      = 350000.0
@@ -55,9 +55,9 @@ object Config {
   val HybridReadinessMin = 0.20
   val FullAiReadinessMin = 0.35
 
-  // Gospodarstwa domowe
-  val BaseWage              = 5833.0
-  val BaseReservationWage   = 4000.0
+  // Gospodarstwa domowe (GUS 2024)
+  val BaseWage              = 8266.0    // GUS średnia brutto 2024
+  val BaseReservationWage   = 4666.0    // Płaca minimalna 2025
   val BdpAmount             = BDP_AMOUNT
   val ReservationBdpMult    = 0.5
   val Mpc                   = 0.82
@@ -69,9 +69,9 @@ object Config {
   val VatRate          = 0.23
   val GovBaseSpending  = 100000000.0
 
-  // NBP
-  val InitialRate      = 0.055
-  val TargetInflation  = 0.025
+  // NBP (dane NBP 2024)
+  val InitialRate      = 0.0575      // NBP stopa ref. 2024
+  val TargetInflation  = 0.025       // Cel NBP 2.5% +/- 1pp
   val TaylorAlpha      = 1.5
   val TaylorBeta       = 0.8
   val TaylorInertia    = 0.70
@@ -80,14 +80,14 @@ object Config {
 
   // System bankowy
   val InitBankCapital  = 500000000.0
-  val BaseSpread       = 0.02
+  val BaseSpread       = 0.015       // NBP MIR spread korporacyjny 2024
   val NplSpreadFactor  = 5.0
   val MinCar           = 0.08
   val LoanRecovery     = 0.30
 
-  // Sektor zagraniczny
-  val BaseExRate       = 4.50
-  val ForeignRate      = 0.035
+  // Sektor zagraniczny (NBP/ECB 2024)
+  val BaseExRate       = 4.33        // NBP średni kurs PLN/EUR 2024
+  val ForeignRate      = 0.04        // ECB stopa 2024
   val ImportPropensity = 0.40
   val ExportBase       = 190000000.0
   val TechImportShare  = 0.40
@@ -115,8 +115,9 @@ object Config {
  */
 case class SectorDef(
   name: String,
-  share: Double,        // Udział w populacji firm
+  share: Double,        // Udział w populacji firm (GUS BAEL 2024)
   sigma: Double,        // Elastyczność substytucji CES
+  wageMultiplier: Double,        // Mnożnik płacy sektorowej vs średnia krajowa
   revenueMultiplier: Double,
   aiCapexMultiplier: Double,
   hybridCapexMultiplier: Double,
@@ -124,12 +125,15 @@ case class SectorDef(
   hybridRetainFrac: Double       // Fraction of workers RETAINED in hybrid mode (0.5 = halve)
 )
 
+// Kalibracja GUS/NBP 2024: 6 sektorów polskiej gospodarki
 val SECTORS = Vector(
-  //                                share  σ     rev   aiCpx hybCpx digiReady hybRetain
-  SectorDef("BPO/SSC",              0.30, 50.0, 1.00, 0.70, 0.70,  0.50,    0.50),
-  SectorDef("Manufacturing",        0.30, 10.0, 1.00, 1.12, 1.05,  0.45,    0.60),
-  SectorDef("Retail/Services",      0.25,  5.0, 1.00, 0.85, 0.80,  0.40,    0.65),
-  SectorDef("Healthcare/Construct", 0.15,  2.0, 1.00, 1.38, 1.25,  0.25,    0.75)
+  //                             share   σ    wage  rev   aiCpx hybCpx digiR  hybRet
+  SectorDef("BPO/SSC",          0.03, 50.0, 1.35, 1.50, 0.70, 0.70,  0.50,  0.50),  // ~489k pracowników (ABSL), avg 11 154 PLN
+  SectorDef("Manufacturing",    0.16, 10.0, 0.94, 1.05, 1.12, 1.05,  0.45,  0.60),  // ~2.8M pracowników, avg ~7 800 PLN
+  SectorDef("Retail/Services",  0.45,  5.0, 0.79, 0.91, 0.85, 0.80,  0.40,  0.65),  // ~61% zatrudnienia (usługi), avg ~6 500 PLN
+  SectorDef("Healthcare",       0.06,  2.0, 0.97, 1.10, 1.38, 1.25,  0.25,  0.75),  // ~5.5%, pielęgniarki 6 890, lekarze 16 300
+  SectorDef("Public",           0.22,  1.0, 0.91, 1.08, 3.00, 2.50,  0.08,  0.90),  // ~22% zatrudnienia (budżetówka), avg ~7 500 PLN
+  SectorDef("Agriculture",      0.08,  3.0, 0.67, 0.80, 2.50, 2.00,  0.12,  0.85)   // ~8% BAEL, avg ~5 500 PLN
 )
 
 // ═══════════════════════════════════════════════════════════════════
@@ -363,7 +367,7 @@ object FirmLogic {
   private def calcPnL(firm: Firm, wage: Double, demandMult: Double,
     price: Double, lendRate: Double): (Double, Double, Double) = {
     val revenue = FirmOps.capacity(firm) * demandMult * price
-    val labor   = FirmOps.workers(firm) * wage
+    val labor   = FirmOps.workers(firm) * wage * SECTORS(firm.sector).wageMultiplier
     val other   = Config.OtherCosts * price
     // AI/hybrid opex is partially imported (40%) — not fully domestic price-sensitive
     val aiMaint = firm.tech match {
@@ -404,9 +408,10 @@ object FirmLogic {
           firm.innovationCostFactor * 0.6
         val upLoan  = upCapex * 0.85
         val upDown  = upCapex * 0.15
+        val wMult   = SECTORS(firm.sector).wageMultiplier
         val upCost  = Config.AiOpex * (0.60 + 0.40 * w.priceLevel) +
           (firm.debt + upLoan) * (lendRate / 12.0) +
-          Config.AutoSkeletonCrew * w.hh.marketWage + Config.OtherCosts * w.priceLevel
+          Config.AutoSkeletonCrew * w.hh.marketWage * wMult + Config.OtherCosts * w.priceLevel
         val profitable = costs > upCost * 1.1
         val canPay     = firm.cash > upDown
         val ready      = firm.digitalReadiness >= Config.FullAiReadinessMin
@@ -437,12 +442,13 @@ object FirmLogic {
         val tax = Math.max(0.0, rev - costs) * Config.CitRate
 
         // Full AI
+        val sWm    = SECTORS(firm.sector).wageMultiplier
         val fCapex = FirmOps.aiCapex(firm)
         val fLoan  = fCapex * 0.85
         val fDown  = fCapex * 0.15
         val fCost  = Config.AiOpex * (0.60 + 0.40 * w.priceLevel) +
           (firm.debt + fLoan) * (lendRate / 12.0) +
-          Config.AutoSkeletonCrew * w.hh.marketWage + Config.OtherCosts * w.priceLevel
+          Config.AutoSkeletonCrew * w.hh.marketWage * sWm + Config.OtherCosts * w.priceLevel
         val fProf  = costs > fCost * (1.1 / FirmOps.sigmaThreshold(firm))
         val fPay   = firm.cash > fDown
         val fReady = firm.digitalReadiness >= Config.FullAiReadinessMin
@@ -453,7 +459,7 @@ object FirmLogic {
         val hLoan  = hCapex * 0.80
         val hDown  = hCapex * 0.20
         val hWkrs  = Math.max(3, (wkrs * SECTORS(firm.sector).hybridRetainFrac).toInt)
-        val hCost  = hWkrs * w.hh.marketWage + Config.HybridOpex * (0.60 + 0.40 * w.priceLevel) +
+        val hCost  = hWkrs * w.hh.marketWage * sWm + Config.HybridOpex * (0.60 + 0.40 * w.priceLevel) +
           (firm.debt + hLoan) * (lendRate / 12.0) + Config.OtherCosts * w.priceLevel
         val hProf  = costs > hCost * (1.05 / FirmOps.sigmaThreshold(firm))
         val hPay   = firm.cash > hDown
@@ -697,8 +703,8 @@ def runSingle(seed: Int): Array[Array[Double]] = {
   // Collect time-series: 120 rows × N columns
   // Columns: Month, Inflation, Unemployment, AutoRatio+HybridRatio, ExRate, MarketWage,
   //          GovDebt, NPL, RefRate, PriceLevel, AutoRatio, HybridRatio,
-  //          SectorAutoRatio(0..3)
-  val nCols = 16
+  //          SectorAutoRatio(0..5): BPO, Manuf, Retail, Health, Public, Agri
+  val nCols = 18
   val results = Array.ofDim[Double](Config.Duration, nCols)
 
   for (t <- 0 until Config.Duration) {
@@ -735,7 +741,9 @@ def runSingle(seed: Int): Array[Array[Double]] = {
       sectorAuto(0),              // 12: BPO auto
       sectorAuto(1),              // 13: Manuf auto
       sectorAuto(2),              // 14: Retail auto
-      sectorAuto(3)               // 15: Health auto
+      sectorAuto(3),              // 15: Health auto
+      sectorAuto(4),              // 16: Public auto
+      sectorAuto(5)               // 17: Agri auto
     )
   }
 
@@ -748,8 +756,8 @@ def runSingle(seed: Int): Array[Array[Double]] = {
 
 {
   println(s"╔══════════════════════════════════════════════════════════════╗")
-  println(s"║  SFC-ABM v5 MONTE CARLO: BDP=${BDP_AMOUNT.toInt} PLN, N=${N_SEEDS} seeds       ║")
-  println(s"║  10 000 firm × 4 sectors × network × 120 months           ║")
+  println(s"║  SFC-ABM v6 GUS-CALIBRATED MC: BDP=${BDP_AMOUNT.toInt} PLN, N=${N_SEEDS} seeds  ║")
+  println(s"║  10 000 firm × 6 sectors (GUS 2024) × WS network × 120m   ║")
   println(s"╚══════════════════════════════════════════════════════════════╝")
 
   val outDir = new File(s"mc")
@@ -757,7 +765,7 @@ def runSingle(seed: Int): Array[Array[Double]] = {
 
   // Aggregation arrays
   val nMonths = Config.Duration
-  val nCols   = 16
+  val nCols   = 18
   val allRuns = Array.ofDim[Double](N_SEEDS, nMonths, nCols)
 
   val startTime = System.currentTimeMillis()
@@ -785,7 +793,7 @@ def runSingle(seed: Int): Array[Array[Double]] = {
   val termPw = new PrintWriter(new File(s"mc/${OUTPUT_PREFIX}_terminal.csv"))
   termPw.write("Seed;Inflation;Unemployment;TotalAdoption;ExRate;MarketWage;" +
     "GovDebt;NPL;RefRate;PriceLevel;AutoRatio;HybridRatio;" +
-    "BPO_Auto;Manuf_Auto;Retail_Auto;Health_Auto\n")
+    "BPO_Auto;Manuf_Auto;Retail_Auto;Health_Auto;Public_Auto;Agri_Auto\n")
   for (seed <- 0 until N_SEEDS) {
     val last = allRuns(seed)(nMonths - 1)
     termPw.write(s"${seed + 1}")
@@ -799,7 +807,8 @@ def runSingle(seed: Int): Array[Array[Double]] = {
   val aggPw = new PrintWriter(new File(s"mc/${OUTPUT_PREFIX}_timeseries.csv"))
   val colNames = Array("Month", "Inflation", "Unemployment", "TotalAdoption", "ExRate",
     "MarketWage", "GovDebt", "NPL", "RefRate", "PriceLevel",
-    "AutoRatio", "HybridRatio", "BPO_Auto", "Manuf_Auto", "Retail_Auto", "Health_Auto")
+    "AutoRatio", "HybridRatio", "BPO_Auto", "Manuf_Auto", "Retail_Auto", "Health_Auto",
+    "Public_Auto", "Agri_Auto")
   // Header: Month, then for each metric: mean, std, p05, p95
   aggPw.write("Month")
   for (c <- 1 until nCols) {
